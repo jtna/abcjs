@@ -69,13 +69,14 @@ function placeNote(outputAudioBuffer, sampleRate, sound, startArray, volumeMulti
 		if (e.renderedBuffer) { // If the system gets overloaded then this can start failing. Just drop the note if so.
 			for (var i = 0; i < startArray.length; i++) {
 				//Math.floor(startArray[i] * sound.tempoMultiplier * sampleRate)
-				var start = startArray[i] * sound.tempoMultiplier;
+				var start = startArray[i][0] * sound.tempoMultiplier;
+				var track = startArray[i][1];
 				if (ofsMs)
 					start -=ofsMs/1000;
 				if (start < 0)
 					start = 0; // If the item that is moved back is at the very beginning of the buffer then don't move it back. To do that would be to push everything else forward. TODO-PER: this should probably be done at some point but then it would change timing in existing apps.
 				start = Math.floor(start*sampleRate);
-				copyToChannel(outputAudioBuffer, e.renderedBuffer, start);
+				copyToChannel(outputAudioBuffer[track], e.renderedBuffer, start);
 			}
 		}
 		fnResolve();

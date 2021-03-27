@@ -26,6 +26,8 @@ function CreateSynth() {
 	self.audioBuffers = []; // cache of the buffers so starting play can be fast.
 	self.duration = undefined; // the duration of the tune in seconds.
 	self.isRunning = false; // whether there is currently a sound buffer running.
+	self.gainNode = [];
+	self.gainValue = []; // not destroyed everytime there's a pause/seek/etc..
 
 	// Load and cache all needed sounds
 	self.init = function(options) {
@@ -247,21 +249,24 @@ function CreateSynth() {
 					var key = note.instrument + ':' + note.pitch + ':' +note.volume + ':' + Math.round((note.end-note.start)*1000)/1000 + ':' + panDistance + ':' + tempoMultiplier + ':' + note.warp;
 					if (!uniqueSounds[key])
 						uniqueSounds[key] = [];
-					uniqueSounds[key].push(note.start);
+					uniqueSounds[key].push([note.start, trackNumber]);
 				});
 			});
 
 			// Now that we know what we are trying to create, construct the audio buffer by creating each sound and placing it.
 			var allPromises = [];
-			var audioBuffer = activeAudioContext().createBuffer(2, totalSamples, activeAudioContext().sampleRate);
+			var audioBuffers = [];
+			noteMapTracks.forEach(function(noteMap, i) {
+				audioBuffers[i] = activeAudioContext().createBuffer(2, totalSamples, activeAudioContext().sampleRate);
+			});
 			for (var key2 = 0; key2 < Object.keys(uniqueSounds).length; key2++) {
 				var k = Object.keys(uniqueSounds)[key2];
 				var parts = k.split(":");
 				var warp = parts[6] !== "undefined" ? parseFloat(parts[6]) : undefined;
  				parts = { instrument: parts[0], pitch: parseInt(parts[1],10), volume: parseInt(parts[2], 10), len: parseFloat(parts[3]), pan: parseFloat(parts[4]), tempoMultiplier: parseFloat(parts[5]), warp: warp};
-				allPromises.push(placeNote(audioBuffer, activeAudioContext().sampleRate, parts, uniqueSounds[k], self.soundFontVolumeMultiplier, self.programOffsets[parts.instrument], fadeTimeSec, self.noteEnd/1000));
+				allPromises.push(placeNote(audioBuffers, activeAudioContext().sampleRate, parts, uniqueSounds[k], self.soundFontVolumeMultiplier, self.programOffsets[parts.instrument], fadeTimeSec, self.noteEnd/1000));
 			}
-			self.audioBuffers = [audioBuffer];
+			self.audioBuffers = audioBuffers;
 
 			if (self.debugCallback) {
 				self.debugCallback("sampleRate = " + activeAudioContext().sampleRate);
@@ -408,10 +413,14 @@ function CreateSynth() {
 	self._kickOffSound = function(seconds) {
 		self.isRunning = true;
 		self.directSource = [];
+		self.gainNode = [];
 		self.audioBuffers.forEach(function(audioBuffer, trackNum) {
+			self.gainNode[trackNum] = activeAudioContext().createGain();
+			self.gainNode[trackNum].gain.value = self.gainValue[trackNum] ? self.gainValue[trackNum] : 1.0;
+			self.gainNode[trackNum].connect(activeAudioContext().destination);
 			self.directSource[trackNum] = activeAudioContext().createBufferSource(); // creates a sound source
 			self.directSource[trackNum].buffer = audioBuffer; // tell the source which sound to play
-			self.directSource[trackNum].connect(activeAudioContext().destination); // connect the source to the context's destination (the speakers)
+			self.directSource[trackNum].connect(self.gainNode[trackNum]);
 		});
 		self.directSource.forEach(function(source) {
 			source.start(0, seconds);
