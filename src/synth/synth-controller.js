@@ -17,6 +17,7 @@ function SynthController() {
 	self.isStarted = false;
 	self.isLoaded = false;
 	self.isLoading = false;
+	self.isStale = false;
 
 	self.load = function (selector, cursorControl, visualOptions) {
 		if (!visualOptions)
@@ -39,6 +40,11 @@ function SynthController() {
 	};
 
 	self.setTune = function(visualObj, userAction, audioParams) {
+		if (self.visualObj != null && self.midiBuffer != null) {
+			if (self.visualObj != visualObj) {
+				self.isStale = true;
+			}
+		}
 		self.visualObj = visualObj;
 		self.disable(false);
 		self.options = audioParams;
@@ -61,6 +67,9 @@ function SynthController() {
 
 	self.go = function () {
 		self.isLoading = true;
+		if (self.isStale) {
+			self.destroy();
+		}
 		var millisecondsPerMeasure = self.visualObj.millisecondsPerMeasure() * 100 / self.warp;
 		self.currentTempo = Math.round(self.visualObj.getBeatsPerMeasure() / millisecondsPerMeasure * 60000);
 		if (self.control)
@@ -115,6 +124,7 @@ function SynthController() {
 		if (self.midiBuffer) {
 			self.midiBuffer.stop();
 			self.midiBuffer = null;
+			self.isStale = false;
 		}
 		self.setProgress(0, 1);
 		if (self.control)
@@ -141,9 +151,12 @@ function SynthController() {
 					return self.runWhenReady(fn, arg1);
 				return fn(arg1);
 			})
-		} else if (!self.isLoaded) {
+		} else if (!self.isLoaded || self.isStale) {
 			return self.go().then(function () {
-				return fn(arg1);
+				if (!self.isStale)
+					return fn(arg1);
+				else
+					return Promise.resolve({status: "stale"});
 			});
 		} else {
 			return fn(arg1);
